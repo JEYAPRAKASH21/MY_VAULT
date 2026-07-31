@@ -1,9 +1,5 @@
--- Run this once against your MySQL server to set up the vault database.
-
-CREATE DATABASE IF NOT EXISTS final_vault_db;
-USE final_vault_db;
-
-
+CREATE DATABASE IF NOT EXISTS vault;
+USE vault;
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
