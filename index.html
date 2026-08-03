@@ -1307,7 +1307,7 @@
   // ---------- storage (backed by the MySQL API) ----------
   async function loadEntries(){
     try{
-      const rows = await apiFetch('/api/entries');
+      const rows = await apiFetch('/entries');
       entries = rows.map(r => ({
         id: r.id,
         name: r.name,
@@ -1480,7 +1480,7 @@
     entries = entries.filter(e=>e.id!==id);
     render();
     try{
-      await apiFetch('/api/entries/' + id, { method: 'DELETE' });
+      await apiFetch('/entries/' + id, { method: 'DELETE' });
     }catch(e){
       entries = prev; // roll back if the server couldn't delete it
       render();
@@ -1605,11 +1605,11 @@
 
     try{
       if(editingId){
-        await apiFetch('/api/entries/' + editingId, { method: 'PUT', body: JSON.stringify(payload) });
+        await apiFetch('/entries/' + editingId, { method: 'PUT', body: JSON.stringify(payload) });
         const e = entries.find(x=>x.id===editingId);
         e.name = name; e.user = user; e.pass = pass; e.category = selectedCategory; e.notes = notes;
       }else{
-        const result = await apiFetch('/api/entries', { method: 'POST', body: JSON.stringify(payload) });
+        const result = await apiFetch('/entries', { method: 'POST', body: JSON.stringify(payload) });
         entries.unshift({ id: result.id, name, user, pass, category: selectedCategory, notes });
       }
       closeModal();
@@ -1839,7 +1839,7 @@
       if(pw.length < 4){ showLockError('Use at least 4 characters'); return; }
       if(pw !== confirm){ showLockError('Passwords don\u2019t match'); return; }
       try{
-        const data = await apiFetch('/api/register', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
+        const data = await apiFetch('/register', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
         authToken = data.token;
         unlockApp();
       }catch(e){ showLockError(e.message || 'Could not create the account'); }
@@ -1849,7 +1849,7 @@
       const pw = lockPassInput.value;
       if(!id || !pw){ showLockError('Enter your identifier and password'); return; }
       try{
-        const data = await apiFetch('/api/login', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
+        const data = await apiFetch('/login', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
         authToken = data.token;
         unlockApp();
       }catch(e){ showLockError(e.message || 'Wrong identifier or password'); }
@@ -1858,7 +1858,7 @@
       const id = lockIdInput.value.trim();
       if(!id){ showLockError('Enter your Gmail or phone number'); return; }
       try{
-        const data = await apiFetch('/api/forgot-password/verify', { method: 'POST', body: JSON.stringify({ identifier: id }) });
+        const data = await apiFetch('/forgot-password/verify', { method: 'POST', body: JSON.stringify({ identifier: id }) });
         pendingResetToken = data.resetToken;
         lockMode = 'recover-reset';
         applyLockUI();
@@ -1871,7 +1871,7 @@
       if(pw.length < 4){ showLockError('Use at least 4 characters'); return; }
       if(pw !== confirm){ showLockError('Passwords don\u2019t match'); return; }
       try{
-        const data = await apiFetch('/api/forgot-password/reset', { method: 'POST', body: JSON.stringify({ resetToken: pendingResetToken, newPassword: pw }) });
+        const data = await apiFetch('/forgot-password/reset', { method: 'POST', body: JSON.stringify({ resetToken: pendingResetToken, newPassword: pw }) });
         authToken = data.token;
         pendingResetToken = null;
         showToast('Password updated 🎉');
