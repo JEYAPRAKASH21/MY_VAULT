@@ -34,8 +34,7 @@ function auth(req, res, next) {
 }
 
 // ---------- auth ----------
-app.post('/api/register', async (req, res) => {
-  const { identifier, password } = req.body;
+app.post('/api/register', async (req, res) => { const { identifier, password } = req.body;
   if (!identifier || !password || password.length < 4) {
     return res.status(400).json({ error: 'Identifier and a password (min 4 chars) are required' });
   }
