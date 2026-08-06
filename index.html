@@ -406,11 +406,40 @@
     margin-top: 42px; line-height:1.6;
   }
 
-  @media (max-width: 560px){
-    .topbar{ flex-direction: column; align-items:flex-start; }
-    .top-actions{ width:100%; }
+  /* Button Spinner & Status Note */
+  .btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: btn-spin 0.6s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes btn-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .lock-status-note {
+    font-size: 12px;
+    color: #3ddbc4;
+    margin-top: 10px;
+    line-height: 1.4;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  @media (max-width: 768px){
+    .topbar{ flex-direction: column; align-items:flex-start; gap: 12px; }
+    .top-actions{ width:100%; display:flex; flex-wrap:wrap; gap:8px; }
     .search-wrap, .search-wrap input{ width:100%; }
     .category-grid{ grid-template-columns: repeat(3,1fr); }
+    .form-group input, .form-group select, .form-group textarea{ font-size: 16px !important; }
+    .lock-card{ padding: 26px 20px 20px; max-height: 85vh; overflow-y: auto; }
+    .lock-screen{ padding: 12px; overflow-y: auto; }
+    .btn{ min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -1002,16 +1031,17 @@
     <p class="sub" id="lockSub">Enter your vault password to continue.</p>
 
     <div class="form-group" id="lockIdGroup">
-      <input id="lockIdInput" type="text" placeholder="Gmail or phone number" autocomplete="off">
+      <input id="lockIdInput" type="text" placeholder="Gmail or phone number" autocomplete="username" inputmode="email">
     </div>
     <div class="form-group" id="lockPassGroup">
-      <input id="lockPassInput" type="password" placeholder="Vault password" autocomplete="off">
+      <input id="lockPassInput" type="password" placeholder="Vault password" autocomplete="current-password">
     </div>
     <div class="form-group" id="lockConfirmGroup" hidden>
-      <input id="lockPassConfirm" type="password" placeholder="Confirm password" autocomplete="off">
+      <input id="lockPassConfirm" type="password" placeholder="Confirm password" autocomplete="new-password">
     </div>
 
     <button class="btn btn-primary" id="lockSubmitBtn" style="width:100%;">Unlock</button>
+    <p class="lock-status-note" id="lockStatusNote" style="display:none;"></p>
     <p class="lock-error" id="lockError"></p>
     <button class="reset-link" id="resetVaultBtn" hidden>Forgot password?</button>
     <button class="reset-link" id="toggleModeBtn" hidden>New here? Create an account</button>
@@ -1109,7 +1139,28 @@
 (function(){
   // ====== CONFIGURE THIS: point at your deployed Vault API backend ======
   const API_BASE = "https://my-vault-9022.onrender.com/api"; // <-- change this
-  let authToken = null; // set after login/register; kept in memory only
+  let authToken = localStorage.getItem('vault_token') || null;
+
+  // Pre-warm backend immediately on page load to spin up Render before user clicks login
+  function prewarmBackend() {
+    fetch(API_BASE + '/health').catch(() => {});
+  }
+  prewarmBackend();
+
+  function setBtnLoading(btn, isLoading, loadingText = '') {
+    if(!btn) return;
+    if(isLoading) {
+      btn.dataset.origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="btn-spinner"></span>${loadingText}`;
+    } else {
+      btn.disabled = false;
+      if(btn.dataset.origText) {
+        btn.innerHTML = btn.dataset.origText;
+        delete btn.dataset.origText;
+      }
+    }
+  }
 
   async function apiFetch(path, options = {}){
     const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
@@ -1319,6 +1370,9 @@
     }catch(e){
       entries = [];
       showToast(e.message || 'Could not load entries from the server');
+      if (e.message && (e.message.includes('token') || e.message.includes('401') || e.message.includes('Missing'))) {
+        logoutUser();
+      }
     }
     render();
   }
@@ -1590,7 +1644,8 @@
   fPass.addEventListener('input', updateStrength);
   fName.addEventListener('input', ()=>{ if(selectedCategory === 'other') renderCategoryGrid(); });
 
-  document.getElementById('saveBtn').addEventListener('click', async ()=>{
+  document.getElementById('saveBtn').addEventListener('click', async (e)=>{
+    const saveBtnEl = e.currentTarget;
     const rawName = fName.value.trim();
     const user = fUser.value.trim();
     const pass = fPass.value;
@@ -1603,19 +1658,22 @@
     const name = rawName || catById[selectedCategory].label;
     const payload = { name, category: selectedCategory, username: user, password: pass, notes };
 
+    setBtnLoading(saveBtnEl, true, 'Saving...');
     try{
       if(editingId){
         await apiFetch('/entries/' + editingId, { method: 'PUT', body: JSON.stringify(payload) });
-        const e = entries.find(x=>x.id===editingId);
-        e.name = name; e.user = user; e.pass = pass; e.category = selectedCategory; e.notes = notes;
+        const entryObj = entries.find(x=>x.id===editingId);
+        if(entryObj) { entryObj.name = name; entryObj.user = user; entryObj.pass = pass; entryObj.category = selectedCategory; entryObj.notes = notes; }
       }else{
         const result = await apiFetch('/entries', { method: 'POST', body: JSON.stringify(payload) });
         entries.unshift({ id: result.id, name, user, pass, category: selectedCategory, notes });
       }
+      setBtnLoading(saveBtnEl, false);
       closeModal();
       render();
       showToast(editingId ? 'Entry updated' : 'Filed to the vault');
     }catch(e){
+      setBtnLoading(saveBtnEl, false);
       showToast(e.message || 'Could not save to the server');
     }
   });
@@ -1709,6 +1767,7 @@
   });
 
   function unlockApp(){
+    if(authToken) localStorage.setItem('vault_token', authToken);
     setMascotSpeech('Yay, welcome in!');
     lockScreen.style.opacity = '0';
     lockScreen.style.transition = 'opacity .3s ease';
@@ -1720,6 +1779,7 @@
   function logoutUser(){
     authToken = null;
     pendingResetToken = null;
+    localStorage.removeItem('vault_token');
     mainApp.style.display = 'none';
 
     lockScreen.style.display = 'flex';
@@ -1760,6 +1820,8 @@
 
   function applyLockUI(){
     lockError.textContent = '';
+    const note = document.getElementById('lockStatusNote');
+    if(note) { note.style.display = 'none'; note.textContent = ''; }
     lockPassInput.value = '';
     lockPassConfirm.value = '';
     resetVaultBtn.hidden = true;
@@ -1815,8 +1877,12 @@
 
   function initLockScreen(){
     spawnSparks();
-    lockMode = 'login';
-    applyLockUI();
+    if(authToken) {
+      unlockApp();
+    } else {
+      lockMode = 'login';
+      applyLockUI();
+    }
   }
 
   function playIntroSplash(){
@@ -1830,6 +1896,18 @@
 
   async function handleLockSubmit(){
     lockError.textContent = '';
+    const note = document.getElementById('lockStatusNote');
+    if(note) { note.style.display = 'none'; note.textContent = ''; }
+
+    let warmTimer = null;
+    const startWarmTimer = () => {
+      warmTimer = setTimeout(() => {
+        if(note) {
+          note.textContent = '⚡ Server is waking up (Render cold start), please hold on...';
+          note.style.display = 'block';
+        }
+      }, 2200);
+    };
 
     if(lockMode === 'register'){
       const id = lockIdInput.value.trim();
@@ -1838,45 +1916,86 @@
       if(!id){ showLockError('Enter a Gmail address or phone number'); return; }
       if(pw.length < 4){ showLockError('Use at least 4 characters'); return; }
       if(pw !== confirm){ showLockError('Passwords don\u2019t match'); return; }
+
+      setBtnLoading(lockSubmitBtn, true, 'Creating account...');
+      startWarmTimer();
       try{
         const data = await apiFetch('/register', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
         authToken = data.token;
         unlockApp();
-      }catch(e){ showLockError(e.message || 'Could not create the account'); }
+      }catch(e){
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
+        if(note) note.style.display = 'none';
+        showLockError(e.message || 'Could not create the account');
+      }
 
     }else if(lockMode === 'login'){
       const id = lockIdInput.value.trim();
       const pw = lockPassInput.value;
       if(!id || !pw){ showLockError('Enter your identifier and password'); return; }
+
+      setBtnLoading(lockSubmitBtn, true, 'Logging in...');
+      startWarmTimer();
       try{
         const data = await apiFetch('/login', { method: 'POST', body: JSON.stringify({ identifier: id, password: pw }) });
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
         authToken = data.token;
         unlockApp();
-      }catch(e){ showLockError(e.message || 'Wrong identifier or password'); }
+      }catch(e){
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
+        if(note) note.style.display = 'none';
+        showLockError(e.message || 'Wrong identifier or password');
+      }
 
     }else if(lockMode === 'recover-verify'){
       const id = lockIdInput.value.trim();
       if(!id){ showLockError('Enter your Gmail or phone number'); return; }
+
+      setBtnLoading(lockSubmitBtn, true, 'Verifying...');
+      startWarmTimer();
       try{
         const data = await apiFetch('/forgot-password/verify', { method: 'POST', body: JSON.stringify({ identifier: id }) });
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
+        if(note) note.style.display = 'none';
         pendingResetToken = data.resetToken;
         lockMode = 'recover-reset';
         applyLockUI();
         showToast('Verified! Set a new password ✅');
-      }catch(e){ showLockError(e.message || 'That doesn\u2019t match our records'); }
+      }catch(e){
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
+        if(note) note.style.display = 'none';
+        showLockError(e.message || 'That doesn\u2019t match our records');
+      }
 
     }else if(lockMode === 'recover-reset'){
       const pw = lockPassInput.value;
       const confirm = lockPassConfirm.value;
       if(pw.length < 4){ showLockError('Use at least 4 characters'); return; }
       if(pw !== confirm){ showLockError('Passwords don\u2019t match'); return; }
+
+      setBtnLoading(lockSubmitBtn, true, 'Saving password...');
+      startWarmTimer();
       try{
         const data = await apiFetch('/forgot-password/reset', { method: 'POST', body: JSON.stringify({ resetToken: pendingResetToken, newPassword: pw }) });
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
         authToken = data.token;
         pendingResetToken = null;
         showToast('Password updated 🎉');
         unlockApp();
-      }catch(e){ showLockError(e.message || 'Could not save password, try again'); }
+      }catch(e){
+        clearTimeout(warmTimer);
+        setBtnLoading(lockSubmitBtn, false);
+        if(note) note.style.display = 'none';
+        showLockError(e.message || 'Could not save password, try again');
+      }
     }
   }
 

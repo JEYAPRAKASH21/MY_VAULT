@@ -6,7 +6,11 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  optionsSuccessStatus: 200,
+  maxAge: 86400
+}));
 app.use(express.json());
 
 const pool = mysql.createPool({
@@ -17,6 +21,15 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
+});
+
+// Health check / pre-warming endpoint for fast cold starts
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: Date.now() });
+});
+
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'Vault API is operational' });
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
